@@ -277,9 +277,18 @@ class AssetMaker:
             self.__add_segment('%s_asymforward' % self.assetdata['name'], asym_forward, mode='g', preset='asymforward', texmode='lane')
             self.__add_segment('%s_asymbackward' % self.assetdata['name'], asym_backward, mode='g', preset='asymbackward', texmode='lane')
 
+    # (guess)用来添加与轨道连接的节点
     def __create_local_express_dcnode(self, asset, target_median=None):
         seg = asset.get_model('g')
-        dlanes = (target_median - int(asset.right.get_all_blocks()[0][0].x_right / SW.MEDIAN)) // 2
+        right_begin_lanes1 = asset.right.get_all_blocks()[0][0]
+        # 不知道median意义，推测是中间车道的横坐标
+        # lanes1_mid_pos = int(right_begin_lanes1.x_right / SW.MEDIAN)
+        # lanes1_mid_pos = int(right_begin_lanes1.x_left + ((right_begin_lanes1.x_right - right_begin_lanes1.x_left) / SW.MEDIAN))
+        lanes1_mid_abs_pos = int((right_begin_lanes1.x_right - right_begin_lanes1.x_left) / SW.MEDIAN)
+        if target_median is None:
+            target_median = lanes1_mid_abs_pos
+        # print('__create_local_express_dcnode', target_median)
+        dlanes = (target_median - lanes1_mid_abs_pos) // 2
         dcnode, side = self.modeler.make_local_express_dc_node(seg, dlanes)
         '''
         Only adds the direct connect node if there is a connect group available for the median position
@@ -797,13 +806,24 @@ class AssetMaker:
                         self.__create_dcnode(asset, mode, target_median='33')
                     if n_central_median[0] == 0:
                         self.__create_dcnode(asset, mode, target_median='11')
-                    if len(asset.right.get_all_blocks()[0]) == 2:
-                        my_sidemedian = int(asset.right.get_all_blocks()[0][0].x_right / SW.MEDIAN)
-                        self.__create_local_express_dcnode(asset, my_sidemedian)
+                    # (guess)判断是否需要创建与轨道相交的节点（通过比较最左边的车道段宽度）
+                    # 但缺失这段也没有什么问题（疑惑作用）
+                    right_begin_lanes = asset.right.get_all_blocks()[0]
+                    # print('right_begin_lanes', right_begin_lanes, asset.right.nl(), asset.right.nl_min(), asset.right.nl_max())
+                    # print('right_begin_lanes[0]', right_begin_lanes[0], right_begin_lanes[0].nlanes)
+                    if len(right_begin_lanes) > 1:
+                        self.__create_local_express_dcnode(asset)
+                        # lanes1_mid_abs_pos : 车道段中间位置在车道段中的横坐标
+                        lanes1_mid_abs_pos = int((right_begin_lanes[0].x_right - right_begin_lanes[0].x_left) / SW.MEDIAN)
+                        # print(SW.MEDIAN, lanes1_mid_abs_pos)
+                        # lanes1_mid_pos : 车道段中间位置在整条路中的横坐标
+                        # lanes1_mid_pos = int(right_begin_lanes[0].x_left + ((right_begin_lanes[0].x_right - right_begin_lanes[0].x_left) / SW.MEDIAN))
+                        # print(right_begin_lanes[0], right_begin_lanes[0].x_left, right_begin_lanes[0].x_right)
+                        # print(SW.MEDIAN, lanes1_mid_abs_pos, lanes1_mid_pos)
                         for target_median in self.connectgroup_side.keys():
-                            # sidemedian=2 used for BRT station
+                            # lanes1_mid_abs_pos=2 used for BRT station
                             # same rule as normal DC node, from side to center
-                            if 2 < target_median < my_sidemedian:
+                            if 2 < target_median < lanes1_mid_abs_pos:
                                 self.__create_local_express_dcnode(asset, target_median)
             else:
                 self.__create_dcnode(asset, mode)
@@ -918,6 +938,7 @@ class AssetMaker:
         with open(os.path.join(self.output_path, 'imports.txt'), 'a') as f:
             f.writelines(["%s\n" % x for x in self.assets_made])
 
+
 def make(workdir, names_raw, reverse=False, interpolation=None, output_path='output'):
     names = []
     assets = []
@@ -935,9 +956,11 @@ def make(workdir, names_raw, reverse=False, interpolation=None, output_path='out
     if interpolation:
         maker.modeler.set_interp_type(interpolation)
     for name, asset in zip(names, assets):
-        if os.path.exists(os.path.join(output_path, '%s_data.xml' % (str(asset.get_model('g')).split()[0] + ' ' + name))):
-            print(str(asset.get_model('g')).split()[0] + ' ' + name, "already built, skipping")
-            maker.assets_made.append(str(asset.get_model('g')).split()[0] + ' ' + name)
+        asset_name = str(asset.get_model('g')).split()[0] + ' ' + name
+        if os.path.exists(os.path.join(output_path, '%s_data.xml' % asset_name)):
+            print(asset_name, "already built, skipping")
+            maker.assets_made.append(asset_name)
+            continue
         else:
             if 'express' in name:
                 maker.make_singlemode(asset, 'ge')

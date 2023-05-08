@@ -1383,9 +1383,11 @@ class Modeler:
                 transform_apply(median, location=True)
             dcnode = make_mesh([median, lanes])
             # remove local lanes in local-express roads
-            if len(seg.right.decompose()) == 2:
-                low_r = seg.right.decompose()[0].x_right
-                high_l = -seg.left.decompose()[0].x_right
+            left_decompose = seg.left.decompose()
+            right_decompose = seg.right.decompose()
+            if len(right_decompose) == 2:
+                low_r = right_decompose[0].x_right
+                high_l = -left_decompose[0].x_right
                 strip(dcnode, low_r, 1 / EPS)
                 strip(dcnode, -1 / EPS, high_l)
         # when the road is undivided, must create another segment from factory
@@ -1574,10 +1576,11 @@ class Modeler:
     def make_local_express_dc_node(self, seg, dlanes):
         mode = CSURFactory.infer_ground_variation(seg)
         # asymmetrical segment is place that the right (forward) side has more lanes
-        if len(seg.right.decompose()) != 2:
-            raise ValueError("Not a local-express road!")
         blocks = seg.right.decompose()
+        if len(blocks) != 2:
+            raise ValueError("Not a local-express road!")
         xleft = blocks[0].x_left
+        # print(dlanes, blocks[0].nlanes, blocks[1].nlanes)
         if (dlanes <= -blocks[0].nlanes or dlanes >= blocks[1].nlanes):
             raise ValueError("Invalid local-express dcnode combination!")
         #dlanes=0 keeps the local-express median but unprotects bikelane
